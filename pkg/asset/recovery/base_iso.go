@@ -54,9 +54,8 @@ func (i *BaseISO) Generate(_ context.Context, dependencies asset.Parents) error 
 		"Downloading CoreOS ISO...",
 		"Successfully downloaded CoreOS ISO",
 		"Failed to download CoreOS ISO",
-		envConfig,
 	)
-	spinner.FileToMonitor = filePattern
+	spinner.FileToMonitor = envConfig.FindInAssets(filePattern)
 
 	coreOSConfig := coreos.CoreOSConfig{
 		ApplianceConfig: applianceConfig,

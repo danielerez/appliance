@@ -36,7 +36,7 @@ spec:
   - name: hermetic
     value: 'true'
   - name: prefetch-input
-    value: '[{"type": "gomod", "path": "."}, {"type": "rpm", "path": "./rpm-prefetching/"}, {"type": "generic", "path": "."}]'
+    value: '[{"type": "gomod", "path": "."}, {"type": "rpm", "path": "./rpm-prefetching/"}]'
   pipelineSpec:
     finally:
     - name: show-sbom

@@ -70,7 +70,6 @@ func (a *DataISO) Generate(_ context.Context, dependencies asset.Parents) error 
 		"Generating container registry image...",
 		"Successfully generated container registry image",
 		"Failed to generate container registry image",
-		envConfig,
 	)
 	registryUri, err := registry.CopyRegistryImageIfNeeded(envConfig, applianceConfig)
 	if err != nil {
@@ -88,7 +87,6 @@ func (a *DataISO) Generate(_ context.Context, dependencies asset.Parents) error 
 			applianceConfig.Config.OcpRelease.Version),
 		fmt.Sprintf("Failed to pull OpenShift %s release images required for installation",
 			applianceConfig.Config.OcpRelease.Version),
-		envConfig,
 	)
 	registryDir, err := registry.GetRegistryDataPath(envConfig.TempDir, installMirrorDir)
 	if err != nil {
@@ -119,9 +117,8 @@ func (a *DataISO) Generate(_ context.Context, dependencies asset.Parents) error 
 		"Generating data ISO...",
 		"Successfully generated data ISO",
 		"Failed to generate data ISO",
-		envConfig,
 	)
-	spinner.FileToMonitor = dataIsoName
+	spinner.FileToMonitor = envConfig.FindInAssets(dataIsoName)
 	imageGen := genisoimage.NewGenIsoImage(nil)
 	if err = imageGen.GenerateImage(envConfig.CacheDir, dataIsoName, filepath.Join(envConfig.TempDir, dataDir), dataVolumeName); err != nil {
 		return log.StopSpinner(spinner, err)

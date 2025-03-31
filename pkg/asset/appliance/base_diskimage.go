@@ -47,9 +47,8 @@ func (a *BaseDiskImage) Generate(_ context.Context, dependencies asset.Parents) 
 		"Downloading appliance base disk image...",
 		"Successfully downloaded appliance base disk image",
 		"Failed to download appliance base disk image",
-		envConfig,
 	)
-	spinner.FileToMonitor = coreos.CoreOsDiskImageGz
+	spinner.FileToMonitor = envConfig.FindInAssets(coreos.CoreOsDiskImageGz)
 	coreOSConfig := coreos.CoreOSConfig{
 		ApplianceConfig: applianceConfig,
 		EnvConfig:       envConfig,
@@ -69,9 +68,8 @@ func (a *BaseDiskImage) Generate(_ context.Context, dependencies asset.Parents) 
 		"Extracting appliance base disk image...",
 		"Successfully extracted appliance base disk image",
 		"Failed to extract appliance base disk image",
-		envConfig,
 	)
-	spinner.FileToMonitor = filePattern
+	spinner.FileToMonitor = envConfig.FindInAssets(filePattern)
 	fileName, err := fileutil.ExtractCompressedFile(compressed, envConfig.CacheDir)
 	if err != nil {
 		return log.StopSpinner(spinner, err)

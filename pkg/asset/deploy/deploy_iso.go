@@ -91,7 +91,6 @@ func (i *DeployISO) buildDeploymentIso(envConfig *config.EnvConfig, applianceCon
 		"Copying appliance disk image...",
 		"Successfully copied appliance disk image",
 		"Failed to copy appliance disk image",
-		envConfig,
 	)
 	deployIsoTempDir, err := os.MkdirTemp(envConfig.TempDir, consts.DeployDir)
 	if err != nil {
@@ -124,7 +123,6 @@ func (i *DeployISO) buildDeploymentIso(envConfig *config.EnvConfig, applianceCon
 		"Pulling appliance container image...",
 		"Successfully pulled appliance container image",
 		"Failed to pull appliance container image",
-		envConfig,
 	)
 	applianceTarFile := filepath.Join(deployDir, consts.ApplianceImageTar)
 	if err = skopeo.NewSkopeo(nil).CopyToFile(
@@ -148,9 +146,8 @@ func (i *DeployISO) buildDeploymentIso(envConfig *config.EnvConfig, applianceCon
 		"Generating appliance deployment ISO...",
 		"Successfully generated appliance deployment ISO",
 		"Failed to generate appliance deployment ISO",
-		envConfig,
 	)
-	spinner.FileToMonitor = consts.DeployIsoName
+	spinner.FileToMonitor = envConfig.FindInAssets(consts.DeployIsoName)
 
 	// Generate deployment ISO
 	volumeID, err := isoeditor.VolumeIdentifier(coreosIsoPath)

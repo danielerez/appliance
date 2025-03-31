@@ -108,7 +108,6 @@ func (a *ApplianceLiveISO) buildLiveISO(envConfig *config.EnvConfig, applianceCo
 		"Extracting CoreOS ISO...",
 		"Successfully extracted CoreOS ISO",
 		"Failed to extract CoreOS ISO",
-		envConfig,
 	)
 	spinner.DirToMonitor = workDir
 
@@ -128,7 +127,6 @@ func (a *ApplianceLiveISO) buildLiveISO(envConfig *config.EnvConfig, applianceCo
 		"Copying data ISO...",
 		"Successfully copied data ISO",
 		"Failed to copy data ISO",
-		envConfig,
 	)
 	spinner.DirToMonitor = dataDir
 
@@ -149,9 +147,8 @@ func (a *ApplianceLiveISO) buildLiveISO(envConfig *config.EnvConfig, applianceCo
 		"Generating appliance live ISO...",
 		"Successfully generated appliance live ISO",
 		"Failed to generate appliance live ISO",
-		envConfig,
 	)
-	spinner.FileToMonitor = consts.DeployIsoName
+	spinner.FileToMonitor = envConfig.FindInAssets(consts.DeployIsoName)
 
 	// Generate live ISO
 	volumeID, err := isoeditor.VolumeIdentifier(coreosIsoPath)

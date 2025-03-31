@@ -62,7 +62,13 @@ func (u *UpgradeISO) Generate(_ context.Context, dependencies asset.Parents) err
 	applianceConfig := &config.ApplianceConfig{}
 	dependencies.Get(envConfig, applianceConfig)
 
-	releaseImage, releaseVersion, err := applianceConfig.GetRelease()
+	releaseConfig := release.ReleaseConfig{
+		ApplianceConfig: applianceConfig,
+		EnvConfig:       envConfig,
+	}
+	r := release.NewRelease(releaseConfig)
+
+	releaseImage, releaseVersion, err := r.GetRelease()
 	if err != nil {
 		return err
 	}
@@ -78,12 +84,6 @@ func (u *UpgradeISO) Generate(_ context.Context, dependencies asset.Parents) err
 		u.UpgradeManifestFileName = machineConfigFileName
 		return nil
 	}
-
-	releaseConfig := release.ReleaseConfig{
-		ApplianceConfig: applianceConfig,
-		EnvConfig:       envConfig,
-	}
-	r := release.NewRelease(releaseConfig)
 
 	dataDirPath := filepath.Join(envConfig.TempDir, upgradeDataDir)
 	if err := os.MkdirAll(dataDirPath, os.ModePerm); err != nil {
@@ -104,7 +104,6 @@ func (u *UpgradeISO) Generate(_ context.Context, dependencies asset.Parents) err
 		"Generating container registry image...",
 		"Successfully generated container registry image",
 		"Failed to generate container registry image",
-		envConfig,
 	)
 	registryUri, err := registry.CopyRegistryImageIfNeeded(envConfig, applianceConfig)
 	if err != nil {
@@ -122,7 +121,6 @@ func (u *UpgradeISO) Generate(_ context.Context, dependencies asset.Parents) err
 			applianceConfig.Config.OcpRelease.Version),
 		fmt.Sprintf("Failed to pull OpenShift %s release images required for upgrade",
 			applianceConfig.Config.OcpRelease.Version),
-		envConfig,
 	)
 	registryDir, err := registry.GetRegistryDataPath(envConfig.TempDir, installMirrorDir)
 	if err != nil {
@@ -164,9 +162,8 @@ func (u *UpgradeISO) Generate(_ context.Context, dependencies asset.Parents) err
 		"Generating upgrade ISO...",
 		"Successfully generated upgrade ISO",
 		"Failed to generate upgrade ISO",
-		envConfig,
 	)
-	spinner.FileToMonitor = upgradeISOName
+	spinner.FileToMonitor = envConfig.FindInAssets(upgradeISOName)
 	imageGen := genisoimage.NewGenIsoImage(nil)
 	upgradeVolumeName := fmt.Sprintf(upgradeVolumeNamePattern, releaseVersion)
 	if err = imageGen.GenerateImage(envConfig.AssetsDir, upgradeISOName, filepath.Join(envConfig.TempDir, upgradeDataDir), upgradeVolumeName); err != nil {

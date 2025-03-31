@@ -15,6 +15,7 @@ import (
 	"github.com/openshift/appliance/pkg/consts"
 	"github.com/openshift/appliance/pkg/executer"
 	"github.com/openshift/appliance/pkg/fileutil"
+	"github.com/openshift/appliance/pkg/graph"
 	"github.com/openshift/appliance/pkg/templates"
 	"github.com/openshift/appliance/pkg/types"
 	"github.com/pkg/errors"
@@ -35,10 +36,17 @@ const (
 )
 
 const (
+	// Templates
 	templateGetImage     = "oc adm release info --image-for=%s --insecure=%t %s"
 	templateExtractCmd   = "oc adm release extract --command=%s --to=%s %s"
 	templateImageExtract = "oc image extract --path %s:%s --confirm %s"
-	ocMirror             = "oc mirror --v2 --config=%s docker://127.0.0.1:%d --workspace=file://%s --src-tls-verify=false --dest-tls-verify=false --parallel-images=1 --parallel-layers=1 --retry-times=5"
+	templateOcMirror     = "oc mirror --v2 --config=%s docker://127.0.0.1:%d --workspace=file://%s --src-tls-verify=false --dest-tls-verify=false --parallel-images=1 --parallel-layers=1 --retry-times=5"
+	templateGetVersion   = "oc adm release info %s -o template --template '{{.metadata.version}}'"
+	templateGetDigest    = "oc adm release info %s -o template --template '{{.digest}}'"
+
+	// Binaries URLs
+	ocUrl       = "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest/openshift-client-linux.tar.gz"
+	ocMirrorUrl = "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest/oc-mirror.tar.gz"
 )
 
 // Release is the interface to use the oc command to the get image info
@@ -49,6 +57,7 @@ type Release interface {
 	MirrorInstallImages() error
 	GetImageFromRelease(imageName string) (string, error)
 	ExtractCommand(command string, dest string) (string, error)
+	GetRelease() (string, string, error)
 }
 
 type ReleaseConfig struct {
@@ -62,8 +71,16 @@ type release struct {
 	ReleaseConfig
 }
 
+var rel *release
+var releaseImage string
+var releaseVersion string
+
 // NewRelease is used to set up the executor to run oc commands
 func NewRelease(config ReleaseConfig) Release {
+	if rel != nil {
+		return rel
+	}
+
 	if config.Executer == nil {
 		config.Executer = executer.NewExecuter()
 	}
@@ -71,9 +88,11 @@ func NewRelease(config ReleaseConfig) Release {
 		config.OSInterface = &fileutil.OSFS{}
 	}
 
-	return &release{
+	r := release{
 		ReleaseConfig: config,
 	}
+
+	return &r
 }
 
 // ExtractFile extracts the specified file from the given image name, and store it in the cache dir.
@@ -91,7 +110,11 @@ func (r *release) ExtractFile(image string, filename string) (string, error) {
 }
 
 func (r *release) GetImageFromRelease(imageName string) (string, error) {
-	cmd := fmt.Sprintf(templateGetImage, imageName, true, swag.StringValue(r.ApplianceConfig.Config.OcpRelease.URL))
+	imageUrl, _, err := r.GetRelease()
+	if err != nil {
+		return "", err
+	}
+	cmd := fmt.Sprintf(templateGetImage, imageName, true, imageUrl)
 
 	logrus.Debugf("Fetching image from OCP release (%s)", cmd)
 	image, err := r.execute(cmd)
@@ -120,7 +143,11 @@ func (r *release) extractFileFromImage(image, file, outputDir string) (string, e
 }
 
 func (r *release) ExtractCommand(command string, dest string) (string, error) {
-	cmd := fmt.Sprintf(templateExtractCmd, command, dest, *r.ApplianceConfig.Config.OcpRelease.URL)
+	imageUrl, _, err := r.GetRelease()
+	if err != nil {
+		return "", err
+	}
+	cmd := fmt.Sprintf(templateExtractCmd, command, dest, imageUrl)
 	logrus.Debugf("extracting %s to %s, %s", command, dest, cmd)
 	stdout, err := r.execute(cmd)
 	if err != nil {
@@ -152,7 +179,7 @@ func (r *release) mirrorImages(imageSetFile, blockedImages, additionalImages, op
 
 	tempDir := filepath.Join(r.EnvConfig.TempDir, "oc-mirror")
 	registryPort := swag.IntValue(r.ApplianceConfig.Config.ImageRegistry.Port)
-	cmd := fmt.Sprintf(ocMirror, imageSetFilePath, registryPort, tempDir)
+	cmd := fmt.Sprintf(templateOcMirror, imageSetFilePath, registryPort, tempDir)
 
 	logrus.Debugf("Fetching image from OCP release (%s)", cmd)
 	result, err := r.execute(cmd)
@@ -252,4 +279,81 @@ func (r *release) MirrorInstallImages() error {
 		r.generateAdditionalImagesList(r.ApplianceConfig.Config.AdditionalImages),
 		r.generateOperatorsList(r.ApplianceConfig.Config.Operators),
 	)
+}
+
+func (r *release) GetRelease() (image string, version string, err error) {
+	if releaseImage != "" && releaseVersion != "" {
+		return releaseImage, releaseVersion, nil
+	}
+
+	// Download 'oc' and 'oc-mirror' binaries
+	if err := r.downloadOcBinaries(); err != nil {
+		return "", "", err
+	}
+
+	if r.ApplianceConfig.Config.OcpRelease.URL == nil {
+		graphConfig := graph.GraphConfig{
+			Arch:    config.GetReleaseArchitectureByCPU(*r.ApplianceConfig.Config.OcpRelease.CpuArchitecture),
+			Version: r.ApplianceConfig.Config.OcpRelease.Version,
+			Channel: r.ApplianceConfig.Config.OcpRelease.Channel,
+		}
+
+		g := graph.NewGraph(graphConfig)
+		releaseImage, releaseVersion, err = g.GetReleaseImage()
+	} else {
+		releaseImage = swag.StringValue(r.ApplianceConfig.Config.OcpRelease.URL)
+
+		// Get version
+		cmd := fmt.Sprintf(templateGetVersion, releaseImage)
+		releaseVersion, err = executer.NewExecuter().Execute(cmd)
+		if err != nil {
+			return "", "", nil
+		}
+		releaseVersion = strings.Trim(releaseVersion, "'")
+		logrus.Debugf("Release version: %s", releaseVersion)
+
+		// Get image
+		if !strings.Contains(releaseImage, "@") {
+			cmd := fmt.Sprintf(templateGetDigest, releaseImage)
+			releaseDigest, err := executer.NewExecuter().Execute(cmd)
+			if err != nil {
+				return "", "", nil
+			}
+			releaseDigest = strings.Trim(releaseDigest, "'")
+			releaseImage = fmt.Sprintf("%s@%s", strings.Split(releaseImage, ":")[0], releaseDigest)
+		}
+		logrus.Debugf("Release image: %s", releaseImage)
+	}
+
+	if err != nil {
+		return "", "", fmt.Errorf("failure in getting the release image (error: %w).\nPlease retry to build", err)
+	}
+
+	r.ApplianceConfig.Config.OcpRelease.URL = &releaseImage
+	r.ApplianceConfig.Config.OcpRelease.Version = releaseVersion
+
+	return releaseImage, releaseVersion, nil
+}
+
+func (r *release) downloadOcBinaries() error {
+	// spinner := log.NewSpinner(
+	// 	"Downloading 'oc' and 'oc-mirror' binaries...",
+	// 	"Successfully downloaded 'oc' and 'oc-mirror' binaries",
+	// 	"Failed to download 'oc' and 'oc-mirror' binaries",
+	// )
+
+	// Download 'oc' binary
+	logrus.Debugf("Download 'oc': %s", ocUrl)
+	if err := fileutil.DownloadCompressedBinary(ocUrl, "/usr/local/bin", "oc"); err != nil {
+		return err
+	}
+
+	// Download 'oc-mirror' binary
+	logrus.Debugf("Download 'oc-mirror': %s", ocMirrorUrl)
+	if err := fileutil.DownloadCompressedBinary(ocMirrorUrl, "/usr/local/bin", "oc-mirror"); err != nil {
+		return err
+	}
+
+	//return log.StopSpinner(spinner, nil)
+	return nil
 }

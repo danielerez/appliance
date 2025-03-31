@@ -46,10 +46,6 @@ const (
 
 	// Validation commands
 	PodmanPull = "podman pull %s"
-
-	// Release
-	templateGetVersion = "oc adm release info %s -o template --template '{{.metadata.version}}'"
-	templateGetDigest  = "oc adm release info %s -o template --template '{{.digest}}'"
 )
 
 var (
@@ -236,7 +232,7 @@ func (a *ApplianceConfig) Files() []*asset.File {
 	return []*asset.File{}
 }
 
-// Load returns agent config asset from the disk.
+// Load returns appliance config asset from the disk.
 func (a *ApplianceConfig) Load(f asset.FileFetcher) (bool, error) {
 	file, err := f.FetchByName(a.GetConfigFilename())
 	if err != nil {
@@ -283,14 +279,6 @@ func (a *ApplianceConfig) Load(f asset.FileFetcher) (bool, error) {
 		return false, err
 	}
 
-	// Get OCP release image URL and version
-	releaseImage, releaseVersion, err = a.GetRelease()
-	if err != nil {
-		return false, err
-	}
-	config.OcpRelease.URL = &releaseImage
-	config.OcpRelease.Version = releaseVersion
-
 	if config.ImageRegistry == nil {
 		config.ImageRegistry = &types.ImageRegistry{
 			URI:  swag.String(""),
@@ -322,55 +310,6 @@ func GetReleaseArchitectureByCPU(arch string) string {
 	default:
 		return arch
 	}
-}
-
-func (a *ApplianceConfig) GetRelease() (string, string, error) {
-	var err error
-
-	if releaseImage != "" && releaseVersion != "" {
-		// Return cached values
-		return releaseImage, releaseVersion, nil
-	}
-
-	if a.Config.OcpRelease.URL == nil {
-		graphConfig := graph.GraphConfig{
-			Arch:    GetReleaseArchitectureByCPU(*a.Config.OcpRelease.CpuArchitecture),
-			Version: a.Config.OcpRelease.Version,
-			Channel: a.Config.OcpRelease.Channel,
-		}
-
-		g := graph.NewGraph(graphConfig)
-		releaseImage, releaseVersion, err = g.GetReleaseImage()
-	} else {
-		releaseImage = swag.StringValue(a.Config.OcpRelease.URL)
-
-		// Get version
-		cmd := fmt.Sprintf(templateGetVersion, releaseImage)
-		releaseVersion, err = executer.NewExecuter().Execute(cmd)
-		if err != nil {
-			return "", "", nil
-		}
-		releaseVersion = strings.Trim(releaseVersion, "'")
-		logrus.Debugf("Release version: %s", releaseVersion)
-
-		// Get image
-		if !strings.Contains(releaseImage, "@") {
-			cmd := fmt.Sprintf(templateGetDigest, releaseImage)
-			releaseDigest, err := executer.NewExecuter().Execute(cmd)
-			if err != nil {
-				return "", "", nil
-			}
-			releaseDigest = strings.Trim(releaseDigest, "'")
-			releaseImage = fmt.Sprintf("%s@%s", strings.Split(releaseImage, ":")[0], releaseDigest)
-		}
-		logrus.Debugf("Release image: %s", releaseImage)
-	}
-
-	if err != nil {
-		return "", "", fmt.Errorf("failure in getting the release image (error: %w).\nPlease retry to build", err)
-	}
-
-	return releaseImage, releaseVersion, nil
 }
 
 func (a *ApplianceConfig) validateConfig(f asset.FileFetcher) field.ErrorList {

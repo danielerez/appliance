@@ -52,9 +52,8 @@ func (a *ApplianceDiskImage) Generate(_ context.Context, dependencies asset.Pare
 		"Generating appliance disk image...",
 		"Successfully generated appliance disk image",
 		"Failed to generate appliance disk image",
-		envConfig,
 	)
-	spinner.FileToMonitor = consts.ApplianceFileName
+	spinner.FileToMonitor = envConfig.FindInAssets(consts.ApplianceFileName)
 
 	// Render user.cfg
 	if err := templates.RenderTemplateFile(

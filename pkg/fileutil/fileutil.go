@@ -4,7 +4,10 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/openshift/appliance/pkg/executer"
@@ -12,6 +15,7 @@ import (
 
 const (
 	splitCmd = "split %s %s -b %s"
+	tarCmd   = "tar xvzf %s -C %s"
 )
 
 type OSInterface interface {
@@ -113,4 +117,61 @@ func SplitFile(filePath, destPath, partSize string) error {
 	exec := executer.NewExecuter()
 	_, err := exec.Execute(fmt.Sprintf(splitCmd, filePath, destPath, partSize))
 	return err
+}
+
+func DownloadFile(url, filename string) error {
+	// Send GET request to download the file
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Create the file locally
+	outFile, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+
+	// Copy the content of the response body to the file
+	_, err = io.Copy(outFile, resp.Body)
+	return err
+}
+
+// Download and extract binary from tar.gz
+func DownloadCompressedBinary(fileUrl, dstDir, binaryName string) error {
+	parsedUrl, err := url.Parse(fileUrl)
+	if err != nil {
+		return err
+	}
+
+	// Get the filename (the last part of the URL path)
+	filename := path.Base(parsedUrl.Path)
+
+	// Create temp dir
+	tempDir, err := os.MkdirTemp("/tmp", "bin")
+	if err != nil {
+		return err
+	}
+
+	// Download compressed file
+	gzFilename := filepath.Join(tempDir, filename)
+	if err := DownloadFile(fileUrl, gzFilename); err != nil {
+		return err
+	}
+
+	// Extract tar.gz file
+	exec := executer.NewExecuter()
+	if _, err := exec.Execute(fmt.Sprintf(tarCmd, gzFilename, dstDir)); err != nil {
+		return err
+	}
+
+	// Invoke 'chmod +x' on file
+	binFilename := filepath.Join(dstDir, binaryName)
+	if err := os.Chmod(binFilename, 0755); err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -1,7 +1,6 @@
 package log
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,7 +11,6 @@ import (
 	"github.com/alecthomas/units"
 	"github.com/briandowns/spinner"
 	"github.com/dustin/go-humanize"
-	"github.com/openshift/appliance/pkg/asset/config"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,7 +25,7 @@ type Spinner struct {
 	FileToMonitor, DirToMonitor                     string
 }
 
-func NewSpinner(progressMessage, successMessage, failureMessage string, envConfig *config.EnvConfig) *Spinner {
+func NewSpinner(progressMessage, successMessage, failureMessage string) *Spinner {
 	// Create and start spinner with message
 	s := spinner.New(spinner.CharSets[9], 100*time.Millisecond, spinner.WithWriter(os.Stderr))
 	s.Suffix = fmt.Sprintf(" %s", progressMessage)
@@ -46,7 +44,7 @@ func NewSpinner(progressMessage, successMessage, failureMessage string, envConfi
 	wrapper.Ticker = time.NewTicker(1 * time.Second)
 	go func() {
 		for range wrapper.Ticker.C {
-			size, err := getProgressSize(wrapper, envConfig)
+			size, err := getProgressSize(wrapper)
 			if err != nil || size < uint64(units.MiB) {
 				continue
 			}
@@ -58,20 +56,16 @@ func NewSpinner(progressMessage, successMessage, failureMessage string, envConfi
 	return wrapper
 }
 
-func getProgressSize(spinner *Spinner, envConfig *config.EnvConfig) (uint64, error) {
+func getProgressSize(spinner *Spinner) (uint64, error) {
 	var size uint64
 
 	if spinner.FileToMonitor != "" {
-		filename := envConfig.FindInAssets(spinner.FileToMonitor)
-		if filename == "" {
-			return 0, errors.New("file to monitor is missing")
-		}
 		var stat syscall.Stat_t
-		err := syscall.Stat(filename, &stat)
+		err := syscall.Stat(spinner.FileToMonitor, &stat)
 		if err != nil {
 			return 0, err
 		}
-		if strings.Contains(filename, ".raw") {
+		if strings.Contains(spinner.FileToMonitor, ".raw") {
 			// Get actual size of raw sparse file
 			size = uint64(stat.Blocks * blockSize)
 		} else {

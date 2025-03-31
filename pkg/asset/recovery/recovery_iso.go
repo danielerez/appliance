@@ -65,9 +65,8 @@ func (a *RecoveryISO) Generate(_ context.Context, dependencies asset.Parents) er
 			"Generating recovery CoreOS ISO...",
 			"Successfully generated recovery CoreOS ISO",
 			"Failed to generate recovery CoreOS ISO",
-			envConfig,
 		)
-		spinner.FileToMonitor = consts.RecoveryIsoFileName
+		spinner.FileToMonitor = envConfig.FindInAssets(consts.RecoveryIsoFileName)
 
 		// Extracting the base ISO and generating the recovery ISO with a different volume label ('agentboot').
 		if err := os.MkdirAll(recoveryIsoDirPath, os.ModePerm); err != nil {

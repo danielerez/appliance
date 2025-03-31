@@ -112,7 +112,6 @@ func (i *installer) downloadInstallerBinary() (string, error) {
 		fmt.Sprintf("Fetching %s binary...", i.InstallerBinaryName),
 		fmt.Sprintf("Successfully fetched %s binary", i.InstallerBinaryName),
 		fmt.Sprintf("Failed to fetch %s binary", i.InstallerBinaryName),
-		i.EnvConfig,
 	)
 
 	logrus.Debugf("Fetch %s binary from release payload", i.InstallerBinaryName)
